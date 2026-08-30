@@ -53,7 +53,9 @@ main();
 async function main() {
   let payload;
   try {
-    payload = JSON.parse(await readStdin());
+    // `JSON.parse("null")` succeeds and hands back null, which then throws on
+    // the first property read — so coerce before anything touches it.
+    payload = JSON.parse(await readStdin()) ?? {};
   } catch {
     // No usable payload (manual run, malformed input) — print nothing rather
     // than parking an error message in the user's status line.
@@ -172,20 +174,31 @@ function severity(value) {
 function updateLedger(weekly) {
   if (!weekly || typeof weekly.used_percentage !== "number") return null;
   const current = clampPct(weekly.used_percentage);
+  const resetsAt = typeof weekly.resets_at === "number" ? weekly.resets_at : null;
   const today = localDay();
 
   let state = readJson(LEDGER_FILE);
   if (!state || state.day !== today || typeof state.lastPct !== "number") {
-    state = { day: today, accumulated: 0, lastPct: current };
+    state = { day: today, accumulated: 0, lastPct: current, resetsAt };
     writeJson(LEDGER_FILE, state);
     return state;
   }
 
-  // A drop means the weekly window rolled over, so everything on the clock now
-  // was spent since that reset — and therefore today.
-  const delta = current < state.lastPct ? current : current - state.lastPct;
+  // A rollover is a *new window*, not merely a smaller number. Claude's reported
+  // percentage also drifts down on its own — rounding, backend recalculation —
+  // and reading any decrease as a reset banks the whole current figure as if it
+  // had all been spent since midnight, which saturates the tally at 100% within
+  // a day. `resets_at` moving forward is the unambiguous signal.
+  //
+  // A ledger written before this field existed, or a payload without
+  // `resets_at`, leaves `rolled` false: a real rollover then under-counts by one
+  // window instead of over-counting, which is the safer direction to be wrong.
+  const rolled =
+    resetsAt !== null && typeof state.resetsAt === "number" && resetsAt > state.resetsAt;
+  const delta = rolled ? current : current - state.lastPct;
   state.accumulated = clampPct(state.accumulated + Math.max(0, delta));
   state.lastPct = current;
+  state.resetsAt = resetsAt ?? state.resetsAt;
   writeJson(LEDGER_FILE, state);
   return state;
 }

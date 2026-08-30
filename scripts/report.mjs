@@ -76,7 +76,21 @@ function printToday() {
     ledger = null;
   }
   if (!ledger || typeof ledger.accumulated !== "number") return;
+  // The ledger is only rolled over to a new day by the status line, so before
+  // its first refresh of the morning this file still holds yesterday's total.
+  // Reporting that as "today" would overstate the day by a full day's usage.
+  if (ledger.day !== localDay()) {
+    console.log("  spent today                   : 0.0% of the weekly allowance (no samples yet today)");
+    return;
+  }
   console.log(`  spent today                   : ${ledger.accumulated.toFixed(1)}% of the weekly allowance (tracked locally since ${ledger.day})`);
+}
+
+function localDay() {
+  const now = new Date();
+  const month = `${now.getMonth() + 1}`.padStart(2, "0");
+  const day = `${now.getDate()}`.padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
 }
 
 function printLimit(label, limit) {
