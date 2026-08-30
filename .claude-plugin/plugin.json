@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "claude-meter",
+  "description": "Shows your daily and weekly Claude usage percentages on the Claude Code status line, on the row above the mode indicator.",
+  "version": "0.3.0",
+  "author": {
+    "name": "Ariful",
+    "url": "https://github.com/arifbsmrstu"
+  },
+  "homepage": "https://github.com/arifbsmrstu/claude-meter",
+  "repository": "https://github.com/arifbsmrstu/claude-meter",
+  "license": "MIT",
+  "keywords": [
+    "statusline",
+    "usage",
+    "rate-limits",
+    "context",
+    "cost"
+  ]
+}

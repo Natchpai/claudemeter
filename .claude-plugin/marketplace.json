@@ -1,0 +1,31 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ariful-plugins",
+  "description": "Claude Code plugins by Ariful.",
+  "owner": {
+    "name": "Ariful",
+    "url": "https://github.com/arifbsmrstu"
+  },
+  "plugins": [
+    {
+      "name": "claude-meter",
+      "source": "./",
+      "displayName": "Claude Meter",
+      "description": "Shows your daily (5-hour) and weekly Claude usage percentages on the Claude Code status line.",
+      "author": {
+        "name": "Ariful"
+      },
+      "homepage": "https://github.com/arifbsmrstu/claude-meter",
+      "repository": "https://github.com/arifbsmrstu/claude-meter",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": [
+        "statusline",
+        "usage",
+        "rate-limits",
+        "context",
+        "cost"
+      ]
+    }
+  ]
+}
