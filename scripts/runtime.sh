@@ -1,8 +1,8 @@
-# Shared interpreter lookup for claude-meter's scripts.
+# Shared interpreter lookup for claudemeter's scripts.
 # Claude Code spawns hooks and the status line through a shell that inherits its
 # own environment, so PATH is usually the user's — but a login-shell-only nvm
 # setup can leave it out, hence the explicit probes.
-claude_meter_runtime() {
+claudemeter_runtime() {
   if command -v node >/dev/null 2>&1; then echo node; return 0; fi
   if command -v bun >/dev/null 2>&1; then echo bun; return 0; fi
   for candidate in \

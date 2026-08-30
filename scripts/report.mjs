@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Long-form usage report for /claude-meter:usage.
+// Long-form usage report for /claudemeter:usage.
 //
 // Reads the payload the status line cached on its last refresh — that payload is
 // the only place Claude Code exposes rate-limit numbers, and it is handed to the
@@ -9,12 +9,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const STATE_FILE = join(homedir(), ".claude", "claude-meter", "last.json");
-const LEDGER_FILE = join(homedir(), ".claude", "claude-meter", "daily.json");
+const STATE_FILE = join(homedir(), ".claude", "claudemeter", "last.json");
+const LEDGER_FILE = join(homedir(), ".claude", "claudemeter", "daily.json");
 
 if (!existsSync(STATE_FILE)) {
   console.log("No usage snapshot yet — the status line writes one on its first refresh.");
-  console.log("If the status line is not showing, run /claude-meter:enable.");
+  console.log("If the status line is not showing, run /claudemeter:enable.");
   process.exit(0);
 }
 

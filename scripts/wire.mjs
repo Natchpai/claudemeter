@@ -1,22 +1,26 @@
 #!/usr/bin/env node
-// claude-meter — installs, removes or reports the statusLine entry in the
+// claudemeter — installs, removes or reports the statusLine entry in the
 // user's settings.json.
 //
 // A plugin cannot ship a statusLine of its own: Claude Code's plugin `settings`
 // block only accepts `agent` and `subagentStatusLine`. So the plugin edits the
 // user settings file instead, from a SessionStart hook and from the
-// /claude-meter:enable and /claude-meter:disable commands.
+// /claudemeter:enable and /claudemeter:disable commands.
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const MARKER = "claude-meter";
+// Matches both spellings: the project was renamed from `claude-meter`, and a
+// settings.json wired by the old name still points at a `claude-meter` path.
+// Without the legacy form, `isOurs` would read our own entry as a foreign
+// status line and silently refuse to touch the row.
+const MARKER = /claude-?meter/;
 const SETTINGS_FILE = settingsPath();
 // The replaced status line is parked here rather than in settings.json: Claude
 // Code validates that file and would flag an unknown key.
-const PREVIOUS_FILE = join(homedir(), ".claude", "claude-meter", "previous-statusline.json");
+const PREVIOUS_FILE = join(homedir(), ".claude", "claudemeter", "previous-statusline.json");
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCRIPT = join(PLUGIN_ROOT, "scripts", "statusline.sh");
 // Guarded rather than a bare `bash "..."`: the install path is version-scoped,
@@ -48,7 +52,7 @@ try {
       report(status());
   }
 } catch (error) {
-  report({ ok: false, message: `claude-meter: ${error.message}` });
+  report({ ok: false, message: `claudemeter: ${error.message}` });
   process.exit(quiet ? 0 : 1);
 }
 
@@ -60,12 +64,12 @@ function enable({ force }) {
     return {
       ok: false,
       message:
-        `claude-meter: left your existing statusLine alone (${describe(current)}).\n` +
-        "Run /claude-meter:enable --force to replace it — the previous value is backed up.",
+        `claudemeter: left your existing statusLine alone (${describe(current)}).\n` +
+        "Run /claudemeter:enable --force to replace it — the previous value is backed up.",
     };
   }
   if (isOurs(current) && current.command === COMMAND) {
-    return { ok: true, changed: false, message: "claude-meter: already enabled." };
+    return { ok: true, changed: false, message: "claudemeter: already enabled." };
   }
 
   if (current && !isOurs(current)) {
@@ -82,14 +86,14 @@ function enable({ force }) {
   return {
     ok: true,
     changed: true,
-    message: `claude-meter: status line enabled in ${SETTINGS_FILE}.`,
+    message: `claudemeter: status line enabled in ${SETTINGS_FILE}.`,
   };
 }
 
 function disable() {
   const settings = readSettings();
   if (!isOurs(settings.statusLine)) {
-    return { ok: true, changed: false, message: "claude-meter: not currently enabled." };
+    return { ok: true, changed: false, message: "claudemeter: not currently enabled." };
   }
   const previous = readPrevious();
   if (previous) {
@@ -103,8 +107,8 @@ function disable() {
     ok: true,
     changed: true,
     message: previous
-      ? "claude-meter: disabled, your previous status line is restored."
-      : "claude-meter: disabled.",
+      ? "claudemeter: disabled, your previous status line is restored."
+      : "claudemeter: disabled.",
   };
 }
 
@@ -115,20 +119,20 @@ function status() {
     return {
       ok: true,
       message: stale
-        ? "claude-meter: enabled, but pointing at an old plugin path — run /claude-meter:enable to refresh."
-        : "claude-meter: enabled.",
+        ? "claudemeter: enabled, but pointing at an old plugin path — run /claudemeter:enable to refresh."
+        : "claudemeter: enabled.",
     };
   }
   return {
     ok: true,
     message: current
-      ? `claude-meter: disabled — another status line is active (${describe(current)}).`
-      : "claude-meter: disabled — no status line configured.",
+      ? `claudemeter: disabled — another status line is active (${describe(current)}).`
+      : "claudemeter: disabled — no status line configured.",
   };
 }
 
 function isOurs(entry) {
-  return Boolean(entry && typeof entry.command === "string" && entry.command.includes(MARKER));
+  return Boolean(entry && typeof entry.command === "string" && MARKER.test(entry.command));
 }
 
 function describe(entry) {
@@ -185,7 +189,7 @@ function clearPrevious() {
 }
 
 function backup() {
-  const target = `${SETTINGS_FILE}.claude-meter.bak`;
+  const target = `${SETTINGS_FILE}.claudemeter.bak`;
   try {
     copyFileSync(SETTINGS_FILE, target);
   } catch {

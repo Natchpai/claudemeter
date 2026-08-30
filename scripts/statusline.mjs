@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// claude-meter — renders the Claude Code status line.
+// claudemeter — renders the Claude Code status line.
 //
 // Claude Code pipes a JSON payload on stdin and prints whatever this writes to
 // stdout on the line directly above the mode indicator. Keep the output to a
@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-const STATE_DIR = join(homedir(), ".claude", "claude-meter");
+const STATE_DIR = join(homedir(), ".claude", "claudemeter");
 const LAST_FILE = join(STATE_DIR, "last.json");
 const LEDGER_FILE = join(STATE_DIR, "daily.json");
 
@@ -24,12 +24,12 @@ const ANSI = {
 };
 
 const env = process.env;
-const style = env.CLAUDE_METER_STYLE === "compact" ? "compact" : "words";
-const useColor = env.CLAUDE_METER_COLOR !== "0" && env.NO_COLOR === undefined;
-const useBars = !isOff(env.CLAUDE_METER_BARS);
-const resetMode = resolveResetMode(env.CLAUDE_METER_RESETS);
-const barWidth = clampInt(env.CLAUDE_METER_BAR_WIDTH, 6, 1, 20);
-const separator = env.CLAUDE_METER_SEPARATOR ?? (style === "words" ? " and " : " · ");
+const style = env.CLAUDEMETER_STYLE === "compact" ? "compact" : "words";
+const useColor = env.CLAUDEMETER_COLOR !== "0" && env.NO_COLOR === undefined;
+const useBars = !isOff(env.CLAUDEMETER_BARS);
+const resetMode = resolveResetMode(env.CLAUDEMETER_RESETS);
+const barWidth = clampInt(env.CLAUDEMETER_BAR_WIDTH, 6, 1, 20);
+const separator = env.CLAUDEMETER_SEPARATOR ?? (style === "words" ? " and " : " · ");
 
 // Labels differ by style only; the underlying number is identical.
 // `daily` is Claude's 5-hour session window — the shortest bucket Claude
@@ -66,7 +66,7 @@ async function main() {
 }
 
 function render(payload, ledger) {
-  const names = (env.CLAUDE_METER_SEGMENTS ?? DEFAULT_SEGMENTS)
+  const names = (env.CLAUDEMETER_SEGMENTS ?? DEFAULT_SEGMENTS)
     .split(",")
     .map((s) => ALIASES[s.trim()] ?? s.trim())
     .filter((s) => s in SEGMENTS);

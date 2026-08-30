@@ -8,15 +8,15 @@
   },
   "plugins": [
     {
-      "name": "claude-meter",
+      "name": "claudemeter",
       "source": "./",
-      "displayName": "Claude Meter",
+      "displayName": "Claudemeter",
       "description": "Shows your daily (5-hour) and weekly Claude usage percentages on the Claude Code status line.",
       "author": {
         "name": "Ariful"
       },
-      "homepage": "https://github.com/arifbsmrstu/claude-meter",
-      "repository": "https://github.com/arifbsmrstu/claude-meter",
+      "homepage": "https://github.com/arifbsmrstu/claudemeter",
+      "repository": "https://github.com/arifbsmrstu/claudemeter",
       "license": "MIT",
       "category": "productivity",
       "keywords": [

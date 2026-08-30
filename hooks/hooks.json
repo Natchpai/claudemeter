@@ -1,5 +1,5 @@
 {
-  "description": "Keeps the claude-meter status line wired into your settings while the plugin is enabled.",
+  "description": "Keeps the claudemeter status line wired into your settings while the plugin is enabled.",
   "hooks": {
     "SessionStart": [
       {
