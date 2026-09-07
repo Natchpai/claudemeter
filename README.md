@@ -3,9 +3,22 @@
 A Claude Code plugin that puts your plan usage on the status line:
 
 ```
-daily usage █████░ 78%, resets in 1h 54m and weekly usage ██░░░░ 34%, resets in 4d 2h
+✨ Opus 5 │ ⚡ Daily: ████▋░ 78% 1h54m │ 📅 Weekly: ██░░░░ 34% 4d2h │ 📁 my-project │ 🌿 feature/auth
 ⏵⏵ auto mode on
 ```
+
+The model you are on, both usage windows with the time until each resets, the
+project you are in and the branch you are on — in one row.
+
+Each meter is a true gradient: every cell is coloured at its own point along the
+ramp, so the bar shades from calm to alarming as it fills, and the partial blocks
+let six characters resolve to about a percent. Segments that carry no severity —
+the model, the directory, the branch — take an identity hue from the theme
+instead, which is where the colour comes from.
+
+Six themes, seven meter styles, four layouts, four icon sets.
+`/claudemeter:themes` renders every one of them against a sample reading so you
+can see it before you set it.
 
 The numbers come straight from Claude's own rate-limit payload — the same source
 `/usage` reads — so they match what actually throttles you. No dependencies, no
@@ -28,7 +41,7 @@ network calls, nothing to build.
 
 Claude Code asks for a scope — pick **User** to get it in every project. The same
 commands work from a shell as `claude plugin marketplace add …`. To pin a release
-instead of tracking `main`, append `@v0.3.0` to the marketplace source.
+instead of tracking `main`, append `@v0.4.0` to the marketplace source.
 
 Then restart Claude Code. The line appears on the row **directly above** the mode
 indicator.
@@ -57,7 +70,8 @@ The edit is deliberate and reversible:
 
 | Command | What it does |
 | --- | --- |
-| `/claudemeter:usage` | Full breakdown — both windows with reset times, today's tally, context window, session cost |
+| `/claudemeter:usage` | Full dashboard — both windows with reset times, today's tally, weekly trend and burn-rate projection, context window, session cost |
+| `/claudemeter:themes` | Preview every theme, icon set, meter style, layout and segment set against a sample reading |
 | `/claudemeter:enable` | Wire the status line in. `--force` replaces an existing one. Safe to re-run |
 | `/claudemeter:disable` | Remove it and restore whatever was there before |
 
@@ -66,30 +80,52 @@ The edit is deliberate and reversible:
 Set these in your shell environment (`.bashrc`, `.zshrc`, …) — the status line
 command inherits them.
 
+Run `/claudemeter:themes` to see every one of these rendered before you commit
+to it.
+
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `CLAUDEMETER_SEGMENTS` | `daily,weekly` | Comma-separated, in display order. Also available: `today`, `ctx`, `cost`, `model`, `dir`, `branch`, `lines` |
-| `CLAUDEMETER_STYLE` | `words` | `words` → `daily usage █████░ 78%, resets in 1h 54m`; `compact` → `5h █████░ 78% resets in 1h 54m` |
-| `CLAUDEMETER_SEPARATOR` | ` and ` (` · ` in compact) | Text between segments |
-| `CLAUDEMETER_RESETS` | `relative` | `relative` → `resets in 1h 54m`; `clock` → `until 4:39pm` (gaining a weekday when it lands on a later day); `0` → omit it |
-| `CLAUDEMETER_BARS` | `1` | `0` drops the `█████░` meter before each percentage |
-| `CLAUDEMETER_BAR_WIDTH` | `6` | Characters per meter (1–20) |
+| `CLAUDEMETER_THEME` | `aurora` | `aurora`, `neon`, `sunset`, `matrix`, `ice`, `mono` |
+| `CLAUDEMETER_SEGMENTS` | `model,daily,weekly,dir,branch` | Comma-separated, in display order. Also available: `today`, `ctx`, `cost`, `spark`, `lines` |
+| `CLAUDEMETER_STYLE` | `chill` | `chill` → `⚡ Daily: ████▋░ 78% 1h54m`; `pill` → colour capsules; `compact` → `5h ████▋░ 78% resets in 1h 54m`; `words` → `daily usage ████▋░ 78%, resets in 1h 54m` |
+| `CLAUDEMETER_ICONS` | `emoji` | `emoji` → ✨⚡📅📁🌿; `shapes` → ✦◔▦▸⌥ for fonts with no emoji coverage; `ascii` → `* > @`; `none` |
+| `CLAUDEMETER_BAR_STYLE` | `smooth` | Meter glyphs: `smooth` (partial blocks), `blocks`, `shade`, `dots`, `line`, `bars`, `ascii` |
+| `CLAUDEMETER_SEPARATOR` | ` │ ` (` ` in pill, ` and ` in words, ` · ` in compact) | Text between segments |
+| `CLAUDEMETER_RESETS` | `relative` | `relative` → `1h54m`; `clock` → `7:31pm` (gaining a weekday when it lands on a later day); `0` → omit it |
+| `CLAUDEMETER_BARS` | `1` | `0` drops the meter before each percentage |
+| `CLAUDEMETER_BAR_WIDTH` | `6` (`8` in pill) | Characters per meter (1–30) |
 | `CLAUDEMETER_COLOR` | `1` | `0` disables colour; `NO_COLOR` is honoured too |
+| `CLAUDEMETER_COLOR_DEPTH` | auto | Force `24`, `8`, `4` or `0` if the terminal is detected wrong |
+| `CLAUDEMETER_REPORT_WIDTH` | `72` | Columns for the `/claudemeter:usage` dashboard (48–140) |
 | `CLAUDEMETER_NO_AUTO` | unset | `1` stops the SessionStart hook from touching your settings |
 
-Percentages and meters are coloured green below 60%, yellow to 85%, red above.
-The status line is truncated rather than wrapped, so keep the segment list short:
-the default line is 85 characters wide, and `compact` brings the same information
-down to 62.
+Colour depth is detected from `COLORTERM` and `TERM`: truecolour terminals get
+the full gradient, a 256-colour terminal gets the nearest cube colours, and a
+16-colour one still gets the red/amber/green reading.
+
+The status line is truncated rather than wrapped, and the default line is 101
+columns — five segments of emoji, labels and countdowns is not cheap. If your
+terminal is narrower, drop segments or switch off the countdowns;
+`/claudemeter:themes` prints the width of every option next to it.
 
 ```bash
-# minimal — percentages only, no meters or countdowns
+# a different palette
+export CLAUDEMETER_THEME=neon
+
+# just the two windows — 55 columns
+export CLAUDEMETER_SEGMENTS=daily,weekly
+
+# no emoji: the terminal font has no coverage for them
+export CLAUDEMETER_ICONS=shapes
+
+# minimal — percentages only, no meters, glyphs or countdowns
 export CLAUDEMETER_STYLE=compact
+export CLAUDEMETER_ICONS=none
 export CLAUDEMETER_BARS=0
 export CLAUDEMETER_RESETS=0
 
 # API key auth — no plan limits exist, so show what does
-export CLAUDEMETER_SEGMENTS=ctx,cost
+export CLAUDEMETER_SEGMENTS=model,ctx,cost,dir,branch
 ```
 
 ## What the numbers mean
@@ -102,15 +138,26 @@ both straight from Claude:
 | `daily` | the **5-hour session** window |
 | `weekly` | the **7-day** window |
 
+`Daily:` in the status line is that 5-hour window, not a calendar day.
+
 There is no calendar-day bucket in Claude's rate limits; `/usage` shows the same
 two (plus a Sonnet-only weekly bar on Max and Team plans). So `daily` is the
 5-hour window — the bucket that actually throttles you during a working day. It
 resets every 5 hours, not at midnight.
 
 `today` is the one figure the plugin computes itself: weekly-allowance points
-spent since local midnight, accumulated by diffing successive samples. It only
-counts usage seen while a session had the status line running, so it undercounts
-if you work with Claude Code closed, and it starts from zero on the first day.
+spent since local midnight, accumulated by tracking the high-water mark of the
+weekly percentage. It only counts usage seen while a session had the status line
+running, so it undercounts if you work with Claude Code closed, and it starts
+from zero on the first day.
+
+The same samples are kept as a small ring buffer in
+`~/.claude/claudemeter/history.json`, which is what the `spark` segment and the
+dashboard's **weekly trend** draw. The burn-rate projection there is a straight
+line through that window — usage is bursty, so read it as "if this hour repeats",
+not as a forecast. It is measured only within the current window: a reset shows
+up as the weekly figure dropping, and the trend restarts from there rather than
+reading the drop as usage being handed back.
 
 ## Troubleshooting
 
@@ -122,6 +169,19 @@ it left an existing status line alone, use `--force`.
 **The line is there but empty.**
 Almost always API key auth. Claude Code doesn't report `rate_limits` at all on an
 API key, so there is nothing to show — switch to the `ctx,cost` segments above.
+
+**The emoji show as boxes, or as flat monochrome glyphs.**
+Your terminal font has no colour emoji coverage. `CLAUDEMETER_ICONS=shapes` uses
+geometric characters instead, and `ascii` falls back further still. If the meters
+themselves are the problem, add `CLAUDEMETER_BAR_STYLE=ascii`.
+
+**Everything after the first emoji is shifted by a column.**
+The terminal is rendering emoji single-width. Set `CLAUDEMETER_ICONS=shapes`,
+whose glyphs are one column by definition.
+
+**The colours look wrong or flat.**
+The terminal is being detected at the wrong depth. Check `echo $COLORTERM` — it
+should say `truecolor` — and override with `CLAUDEMETER_COLOR_DEPTH=24`.
 
 **`claudemeter: node or bun not found on PATH`.**
 Claude Code spawns the status line through a non-login shell, so a `node` that
