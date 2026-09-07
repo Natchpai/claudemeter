@@ -79,6 +79,7 @@ for (const set of [
   DEFAULT_SEGMENTS,
   "daily,weekly",
   "model,daily,weekly,dir,branch,cost",
+  "daily,weekly,pace",
   "daily,weekly,ctx,spark",
   "model,dir,branch,lines",
 ]) {

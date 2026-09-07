@@ -9,13 +9,18 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { createCanvas } from "./chart.mjs";
 import {
   THEMES,
+  WINDOW_SECONDS,
   clampPct,
   createPalette,
   displayWidth,
   hue,
+  isOff,
   meter,
+  pace,
+  paceColor,
   resolveBarStyle,
   resolveIconSet,
   resolveTheme,
@@ -34,12 +39,16 @@ const palette = createPalette(env);
 const theme = THEMES[resolveTheme(env.CLAUDEMETER_THEME)];
 const barStyle = resolveBarStyle(env.CLAUDEMETER_BAR_STYLE);
 const iconSet = resolveIconSet(env.CLAUDEMETER_ICONS);
+const showPace = !isOff(env.CLAUDEMETER_PACE);
 const icons = iconSet.glyphs;
 
 // The report is printed into a slash-command result, so the real terminal width
 // is not visible here. 72 columns sits inside every default terminal and inside
 // Claude Code's own wrapping.
-const WIDTH = clampInt(env.CLAUDEMETER_REPORT_WIDTH, 72, 48, 140);
+// The floor is what the gauge rows actually need: the fixed gutter, the widest
+// annotation and a meter narrow enough to still mean something. Accepting a
+// smaller number would silently produce rows wider than the width asked for.
+const WIDTH = clampInt(env.CLAUDEMETER_REPORT_WIDTH, 72, 64, 140);
 const LABEL = 14;
 // The icon column is as wide as the widest glyph the active set can put in it —
 // two columns for emoji, one for the geometric shapes. Measured rather than
@@ -72,6 +81,7 @@ function main() {
   banner(p, state.at);
   planLimits(p);
   trend();
+  budget(p);
   contextWindow(p);
   session(p);
   out.push("");
@@ -139,23 +149,24 @@ function planLimits(p) {
     return;
   }
   heading("plan limits");
-  gauge("daily", "5-hour session", limits.five_hour);
-  gauge("weekly", "7-day window", limits.seven_day);
+  gauge("daily", "5-hour session", limits.five_hour, WINDOW_SECONDS.five_hour);
+  gauge("weekly", "7-day window", limits.seven_day, WINDOW_SECONDS.seven_day);
   todayGauge();
 }
 
-function gauge(icon, label, limit) {
+function gauge(icon, label, limit, windowSeconds) {
   if (!limit || typeof limit.used_percentage !== "number") {
     out.push(row(icon, label, palette.paint("not reported", theme.muted)));
     return;
   }
   const value = clampPct(limit.used_percentage);
   const reset = fmtReset(limit.resets_at);
+  const budgeted = showPace ? pace(limit, windowSeconds) : null;
   out.push(
     row(
       icon,
       label,
-      meter(value, { width: BAR, palette, theme, style: barStyle }) +
+      meter(value, { width: BAR, palette, theme, style: barStyle, pace: budgeted?.target ?? null }) +
         "  " +
         pctText(value) +
         (reset ? "  " + palette.paint(`${icons.reset ?? ""} ${reset}`.trim(), theme.muted) : ""),
@@ -220,8 +231,6 @@ function trend() {
   const spark = sparkline(window.map((s) => s.wk - floor), { palette, theme });
 
   out.push("  " + spark + "  " + annotation);
-  const rate = burnRate(samples);
-  if (rate) out.push("  " + rate);
 }
 
 // Samples since the last time the weekly figure went *down* — that is a window
@@ -241,26 +250,155 @@ function thin(samples, count) {
   return Array.from({ length: count }, (_, i) => samples[Math.round(i * step)]);
 }
 
-// Points per hour over the sampled window, and where that lands if it holds.
-// Deliberately linear and deliberately labelled as a projection: usage is bursty
-// and this is an extrapolation from one machine's samples, not a forecast.
-function burnRate(window) {
-  const first = window[0];
-  const last = window[window.length - 1];
+// Points per hour across the sampled window. Deliberately a straight line
+// through two endpoints: usage is bursty, and a fitted curve would imply a
+// confidence these samples cannot support.
+function burnPerHour(samples) {
+  if (!samples || samples.length < 2) return null;
+  const first = samples[0];
+  const last = samples[samples.length - 1];
   const hours = (last.t - first.t) / 3_600_000;
   if (hours < 0.25) return null;
-  const perHour = (last.wk - first.wk) / hours;
-  if (perHour <= 0.01) {
-    return palette.paint(`${icons.reset ?? ""} flat — no measurable burn`.trim(), theme.muted);
+  return (last.wk - first.wk) / hours;
+}
+
+// Where the weekly window is heading, drawn rather than asserted.
+//
+// Three series: the even-burn diagonal a perfect spender would follow, the
+// samples actually collected, and a ray forward from the last one at the burn
+// rate measured over them. Whether that ray meets the top of the chart before
+// it reaches the right edge is the answer to "will I run out this week" — and
+// unlike a percentage, it shows you by how much.
+function budget(p) {
+  const weekly = p.rate_limits?.seven_day;
+  const budgeted = showPace ? pace(weekly, WINDOW_SECONDS.seven_day) : null;
+  if (!budgeted) return;
+
+  const history = readJson(HISTORY_FILE);
+  const samples = currentWindow((history?.samples ?? []).filter((s) => typeof s?.wk === "number"));
+  const used = clampPct(weekly.used_percentage);
+  const perHour = burnPerHour(samples);
+
+  heading("weekly budget");
+
+  // The chart carries three overlaid series and tells them apart by colour
+  // alone — half blocks give it the vertical resolution but no way to vary the
+  // mark. With colour off it would be one indecipherable staircase, so the
+  // verdict is printed on its own instead of over a chart that cannot be read.
+  if (!palette.enabled) {
+    out.push("  " + verdict(used, perHour, budgeted));
+    return;
   }
-  const remaining = Math.max(0, 100 - last.wk);
-  const hoursLeft = remaining / perHour;
-  const when = new Date(Date.now() + hoursLeft * 3_600_000);
+
+  const plot = WIDTH - 7;
+  const canvas = createCanvas(plot, 6);
+  const windowStart = weekly.resets_at - WINDOW_SECONDS.seven_day;
+  const toX = (epochSeconds) =>
+    ((epochSeconds - windowStart) / WINDOW_SECONDS.seven_day) * (plot - 1);
+  const toY = (pct) => (clampPct(pct) / 100) * (canvas.rows - 1);
+
+  const BUDGET_LINE = 0;
+  const PROJECTION = 1;
+  const OBSERVED = 2;
+
+  canvas.line(0, 0, plot - 1, canvas.rows - 1, BUDGET_LINE);
+
+  const nowX = toX(Date.now() / 1000);
+  if (perHour !== null && perHour > 0.01) {
+    const hoursToCap = (100 - used) / perHour;
+    const hoursToReset = budgeted.remainingSeconds / 3600;
+    const hours = Math.min(hoursToCap, hoursToReset);
+    canvas.line(
+      nowX,
+      toY(used),
+      toX(Date.now() / 1000 + hours * 3600),
+      toY(used + perHour * hours),
+      PROJECTION,
+    );
+  }
+
+  for (const sample of samples) {
+    const seconds = sample.t / 1000;
+    if (seconds < windowStart) continue;
+    canvas.set(toX(seconds), toY(sample.wk), OBSERVED);
+  }
+  // A window only sampled for an hour draws as a single pixel, which is easy to
+  // lose against the diagonal — so the current reading is always marked.
+  canvas.set(nowX, toY(used), OBSERVED);
+
+  const colors = [];
+  colors[BUDGET_LINE] = theme.rule;
+  colors[PROJECTION] = theme.accent;
+  colors[OBSERVED] = valueColor(theme, used);
+
+  const rendered = canvas.render({ palette, colors });
+  const labels = ["100", "", "", " 50", "", ""];
+  rendered.forEach((line, i) => {
+    out.push(
+      "  " +
+        palette.paint((labels[i] ?? "").padStart(3), theme.muted) +
+        " " +
+        palette.paint(i === 0 ? "┤" : "│", theme.rule) +
+        line,
+    );
+  });
+  // The x axis carries a tick for now, which is the only position on it the
+  // reader has to locate. Both ends are deliberately unlabelled: a 7-day window
+  // opens and closes on the same weekday at the same time, so labelling the
+  // start printed the same string as the end and read as a mistake.
+  const nowCol = Math.round(nowX);
+  out.push(
+    "  " +
+      palette.paint("  0", theme.muted) +
+      " " +
+      palette.paint("└" + "─".repeat(nowCol), theme.rule) +
+      palette.paint("┴", theme.accent) +
+      palette.paint("─".repeat(Math.max(0, plot - nowCol - 1)), theme.rule),
+  );
+
+  const reset = `resets ${fmtWhen(new Date(weekly.resets_at * 1000))}`;
+  const nowLabel = "now";
+  const nowAt = Math.max(0, Math.min(plot - nowLabel.length, nowCol - 1));
+  const gap = plot - nowAt - nowLabel.length - reset.length;
+  out.push(
+    "      " +
+      " ".repeat(nowAt) +
+      palette.paint(nowLabel, theme.accent) +
+      // A reset label that would collide with the `now` label is dropped rather
+      // than shoved: late in a window the two are genuinely the same place.
+      (gap >= 2 ? " ".repeat(gap) + palette.paint(reset, theme.muted) : ""),
+  );
+
+  out.push("");
+  out.push("  " + verdict(used, perHour, budgeted));
+}
+
+// Plain language for what the chart shows, because a line that nearly touches
+// the top is worth stating outright.
+function verdict(used, perHour, budgeted) {
+  const ratio = budgeted.ratio;
+  const pacing =
+    palette.paint(`${ratio < 10 ? ratio.toFixed(2) : Math.round(ratio)}×`, paceColor(theme, ratio)) +
+    palette.paint(" even burn", theme.muted);
+
+  if (perHour === null || perHour <= 0.01) {
+    return pacing + palette.paint("  ·  flat — nothing to project", theme.muted);
+  }
+  const hoursToReset = budgeted.remainingSeconds / 3600;
+  const atReset = used + perHour * hoursToReset;
+  if (atReset <= 100) {
+    return (
+      pacing +
+      palette.paint("  ·  finishes the window at ", theme.muted) +
+      palette.paint(`${Math.round(atReset)}%`, valueColor(theme, atReset))
+    );
+  }
+  const hoursToCap = (100 - used) / perHour;
   return (
-    palette.paint(`${perHour.toFixed(2)} pts/h`, valueColor(theme, Math.min(100, perHour * 20))) +
-    palette.paint("   at this rate, empty ", theme.muted) +
-    palette.paint(fmtWhen(when), theme.text) +
-    palette.paint(` · ${fmtHours(hoursLeft)} out`, theme.muted)
+    pacing +
+    palette.paint("  ·  caps ", theme.muted) +
+    palette.paint(fmtWhen(new Date(Date.now() + hoursToCap * 3600_000)), theme.text) +
+    palette.paint(`, ${fmtHours(hoursToReset - hoursToCap)} early`, theme.ramp[theme.ramp.length - 1])
   );
 }
 

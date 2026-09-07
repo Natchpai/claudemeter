@@ -243,35 +243,125 @@ export function resolveBarStyle(raw) {
   return BAR_STYLES[name] ? name : "smooth";
 }
 
+// The pace tick is cut *into* the bar rather than drawn beside it: a dark notch
+// where the fill is bright, a bright notch where the track is dark. Whichever
+// side of it the fill ends on is the whole reading.
+const PIP = "│";
+
 /**
  * A gradient meter. Every filled cell is coloured at its *own* position along
  * the ramp, so the bar shades from calm to alarming as it grows — the colour of
  * the leading edge is the reading, and the tail shows how it got there.
+ *
+ * `pace`, when given, marks the percentage an even burn would have reached by
+ * now. Fill short of the tick means you are under budget; fill past it means
+ * you are spending faster than the window can carry.
  */
-export function meter(value, { width, palette, theme, style = "smooth" }) {
+export function meter(value, { width, palette, theme, style = "smooth", pace = null }) {
   const spec = BAR_STYLES[style] ?? BAR_STYLES.smooth;
-  const pct = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
+  const pct = clampPct(value);
   const exact = (pct / 100) * width;
   const whole = Math.floor(exact);
   const remainder = exact - whole;
 
-  let out = "";
-  for (let i = 0; i < whole && i < width; i += 1) {
-    out += palette.paint(spec.full, cellColor(theme, i, width));
-  }
-  let cells = Math.min(whole, width);
-  if (cells < width && spec.partials) {
-    const step = Math.round(remainder * (spec.partials.length - 1));
-    if (step > 0) {
-      out += palette.paint(spec.partials[step], cellColor(theme, cells, width));
-      cells += 1;
+  const cells = [];
+  for (let i = 0; i < width; i += 1) {
+    if (i < whole) {
+      cells.push({ glyph: spec.full, color: cellColor(theme, i, width), filled: true });
+    } else if (i === whole && spec.partials) {
+      const step = Math.round(remainder * (spec.partials.length - 1));
+      cells.push(
+        step > 0
+          ? { glyph: spec.partials[step], color: cellColor(theme, i, width), filled: true }
+          : { glyph: spec.empty, color: theme.track, filled: false },
+      );
+    } else if (i === whole && remainder >= 0.5) {
+      cells.push({ glyph: spec.full, color: cellColor(theme, i, width), filled: true });
+    } else {
+      cells.push({ glyph: spec.empty, color: theme.track, filled: false });
     }
-  } else if (cells < width && remainder >= 0.5) {
-    out += palette.paint(spec.full, cellColor(theme, cells, width));
-    cells += 1;
   }
-  if (cells < width) out += palette.paint(spec.empty.repeat(width - cells), theme.track);
+
+  if (pace !== null && Number.isFinite(pace)) {
+    // The tick sits in the cell the pace *reaches*, so a pace of 100% marks the
+    // last cell rather than falling off the end of the bar.
+    const index = Math.min(width - 1, Math.max(0, Math.ceil((clampPct(pace) / 100) * width) - 1));
+    const cell = cells[index];
+    cells[index] = {
+      glyph: PIP,
+      // Inverted against whatever it lands on, so the tick is legible whether it
+      // falls inside the fill or out on the empty track.
+      color: cell.filled ? theme.pill : theme.text,
+      background: cell.filled ? cell.color : theme.track,
+    };
+  }
+
+  // Runs of same-coloured cells are emitted as one escape sequence rather than
+  // one per character: a six-cell meter refreshed several times a second is the
+  // hottest path in the plugin.
+  let out = "";
+  let run = "";
+  let runColor = null;
+  let runBackground;
+  const flush = () => {
+    if (run) out += palette.paint(run, runColor, runBackground);
+    run = "";
+  };
+  for (const cell of cells) {
+    if (cell.color !== runColor || cell.background !== runBackground) {
+      flush();
+      runColor = cell.color;
+      runBackground = cell.background;
+    }
+    run += cell.glyph;
+  }
+  flush();
   return out;
+}
+
+// ── pace ────────────────────────────────────────────────────────────────────
+
+/** How long each of Claude's two windows runs, in seconds. */
+export const WINDOW_SECONDS = { five_hour: 5 * 3600, seven_day: 7 * 86400 };
+
+/**
+ * Where an even burn would have reached by now, and how fast you are actually
+ * going relative to that.
+ *
+ * A window that resets at a known time has a known start, so the fraction of it
+ * already elapsed is knowable — and that fraction *is* the budget: 40% of the
+ * way through the week, an even spender has used 40%. `ratio` above 1 means the
+ * cap arrives before the reset does.
+ *
+ * Returns null when the reset time is missing, or when the window has only just
+ * begun: in the first moments the elapsed fraction is near zero and the ratio
+ * explodes to a number that says nothing.
+ */
+export function pace(limit, windowSeconds) {
+  if (!limit || typeof limit.used_percentage !== "number") return null;
+  if (typeof limit.resets_at !== "number" || !Number.isFinite(limit.resets_at)) return null;
+  const remaining = limit.resets_at - Date.now() / 1000;
+  const elapsed = windowSeconds - remaining;
+  if (elapsed <= 0 || remaining <= 0) return null;
+  const fraction = Math.min(1, elapsed / windowSeconds);
+  if (fraction < 0.02) return null;
+  const target = fraction * 100;
+  return {
+    fraction,
+    target,
+    remainingSeconds: remaining,
+    ratio: clampPct(limit.used_percentage) / target,
+  };
+}
+
+/**
+ * Ramp colour for a pace ratio. 1.0 is exactly on budget and has to read as
+ * unremarkable, so the scale is centred there rather than running 0→100 like a
+ * percentage: half-speed sits at the calm end, double-speed at the hot one.
+ */
+export function paceColor(theme, ratio) {
+  const t = Math.max(0, Math.min(1, (ratio - 0.5) / 1.5));
+  return sampleRamp(theme.ramp, t);
 }
 
 // Cells are sampled at their trailing edge so a full meter ends on the last ramp

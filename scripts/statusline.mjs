@@ -16,12 +16,15 @@ import {
   isOff,
   isOn,
   meter,
+  pace,
+  paceColor,
   pill,
   resolveBarStyle,
   resolveIconSet,
   resolveTheme,
   sparkline,
   valueColor,
+  WINDOW_SECONDS,
 } from "./theme.mjs";
 
 const STATE_DIR = join(homedir(), ".claude", "claudemeter");
@@ -48,6 +51,7 @@ const iconSet = resolveIconSet(env.CLAUDEMETER_ICONS);
 // glyph in the middle of a sentence reads as a typo.
 const icons = style === "words" ? {} : iconSet.glyphs;
 const resetMode = resolveResetMode(env.CLAUDEMETER_RESETS);
+const showPace = !isOff(env.CLAUDEMETER_PACE);
 const barWidth = clampInt(env.CLAUDEMETER_BAR_WIDTH, style === "pill" ? 8 : 6, 1, 30);
 const separator = env.CLAUDEMETER_SEPARATOR ?? defaultSeparator();
 // The theme preview renders the real status line once per theme, in-process, to
@@ -70,6 +74,7 @@ const SEGMENTS = {
   branch: {},
   lines: {},
   spark: {},
+  pace: { words: "pace", compact: "pace", pill: "pace", chill: "Pace:" },
 };
 const ALIASES = { "5h": "daily", week: "weekly", session: "daily", trend: "spark" };
 
@@ -110,9 +115,11 @@ function render(payload, ledger, history) {
 function renderSegment(name, p, ledger, history) {
   switch (name) {
     case "daily":
-      return renderLimit(name, p.rate_limits?.five_hour);
+      return renderLimit(name, p.rate_limits?.five_hour, WINDOW_SECONDS.five_hour);
     case "weekly":
-      return renderLimit(name, p.rate_limits?.seven_day);
+      return renderLimit(name, p.rate_limits?.seven_day, WINDOW_SECONDS.seven_day);
+    case "pace":
+      return renderPace(p.rate_limits?.seven_day);
     case "today":
       return ledger ? capsule(name, [pct(ledger.accumulated)]) : null;
     case "ctx":
@@ -136,11 +143,22 @@ function renderSegment(name, p, ledger, history) {
 
 // Rate limits are only present on subscription plans; API-key users get nothing
 // here, which is why the segment returns null rather than a zeroed-out meter.
-function renderLimit(name, limit) {
+function renderLimit(name, limit, windowSeconds) {
   if (!limit || typeof limit.used_percentage !== "number") return null;
   const value = clampPct(limit.used_percentage);
+  const budget = showPace ? pace(limit, windowSeconds) : null;
   const pieces = [];
-  if (useBars) pieces.push(meter(value, { width: barWidth, palette, theme, style: barStyle }));
+  if (useBars) {
+    pieces.push(
+      meter(value, {
+        width: barWidth,
+        palette,
+        theme,
+        style: barStyle,
+        pace: budget?.target ?? null,
+      }),
+    );
+  }
   pieces.push(pct(value));
   const reset = resetLabel(limit.resets_at);
   // "…34%, resets in 4d 2h" is a clause and wants its comma; "…34% until 4:49pm"
@@ -151,6 +169,18 @@ function renderLimit(name, limit) {
     pieces.push(palette.paint(comma ? `, ${reset}` : reset, theme.muted));
   }
   return capsule(name, pieces, { joinLast: Boolean(reset) && style === "words" });
+}
+
+// How fast the weekly allowance is going relative to what the window can carry.
+// 1.0× is exactly on budget; 2.0× means the cap arrives at half-time. The weekly
+// window rather than the 5-hour one, because the 5-hour window is bursty by
+// design — spending it fast is what it is for.
+function renderPace(weekly) {
+  const budget = pace(weekly, WINDOW_SECONDS.seven_day);
+  if (!budget) return null;
+  const ratio = budget.ratio;
+  const text = `${ratio < 10 ? ratio.toFixed(1) : Math.round(ratio)}×`;
+  return capsule("pace", [palette.paint(text, paceColor(theme, ratio))]);
 }
 
 function renderContext(name, ctx, exceeds200k) {

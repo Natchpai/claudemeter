@@ -1,8 +1,8 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "claudemeter",
-  "description": "Shows your daily and weekly Claude usage percentages on the Claude Code status line, on the row above the mode indicator.",
-  "version": "0.4.0",
+  "description": "Puts your Claude plan usage on the status line: model, both usage windows with gradient meters and a pace tick, project and branch \u2014 plus a usage dashboard with a budget projection chart.",
+  "version": "0.5.0",
   "author": {
     "name": "Ariful",
     "url": "https://github.com/arifbsmrstu"
@@ -14,6 +14,8 @@
     "statusline",
     "usage",
     "rate-limits",
+    "pace",
+    "budget",
     "context",
     "cost",
     "themes",

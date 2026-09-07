@@ -16,6 +16,25 @@ let six characters resolve to about a percent. Segments that carry no severity �
 the model, the directory, the branch — take an identity hue from the theme
 instead, which is where the colour comes from.
 
+### The tick in the bar
+
+```
+⚡ Daily: ███▎│░ 63%      under budget — fill stops short of the tick
+⚡ Daily: ████│▊ 78%      over budget  — fill runs past it
+```
+
+That notch is the **pace tick**: the percentage an even burn would have reached
+by now. A window that resets at a known time has a known start, so the fraction
+of it already elapsed is knowable — and that fraction *is* the budget. Two days
+into the week you are entitled to 29%; the tick is drawn there.
+
+So the bar answers a question a percentage cannot. 78% used means nothing on its
+own: it is fine four days into the week and a problem four hours in. Fill short
+of the tick means you are spending slower than the window can carry. Fill past it
+means the cap arrives before the reset does.
+
+Set `CLAUDEMETER_PACE=0` to turn it off.
+
 Six themes, seven meter styles, four layouts, four icon sets.
 `/claudemeter:themes` renders every one of them against a sample reading so you
 can see it before you set it.
@@ -41,7 +60,7 @@ network calls, nothing to build.
 
 Claude Code asks for a scope — pick **User** to get it in every project. The same
 commands work from a shell as `claude plugin marketplace add …`. To pin a release
-instead of tracking `main`, append `@v0.4.0` to the marketplace source.
+instead of tracking `main`, append `@v0.5.0` to the marketplace source.
 
 Then restart Claude Code. The line appears on the row **directly above** the mode
 indicator.
@@ -70,7 +89,7 @@ The edit is deliberate and reversible:
 
 | Command | What it does |
 | --- | --- |
-| `/claudemeter:usage` | Full dashboard — both windows with reset times, today's tally, weekly trend and burn-rate projection, context window, session cost |
+| `/claudemeter:usage` | Full dashboard — both windows with reset times and pace ticks, today's tally, weekly trend, the budget chart, context window, session cost |
 | `/claudemeter:themes` | Preview every theme, icon set, meter style, layout and segment set against a sample reading |
 | `/claudemeter:enable` | Wire the status line in. `--force` replaces an existing one. Safe to re-run |
 | `/claudemeter:disable` | Remove it and restore whatever was there before |
@@ -86,17 +105,18 @@ to it.
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `CLAUDEMETER_THEME` | `aurora` | `aurora`, `neon`, `sunset`, `matrix`, `ice`, `mono` |
-| `CLAUDEMETER_SEGMENTS` | `model,daily,weekly,dir,branch` | Comma-separated, in display order. Also available: `today`, `ctx`, `cost`, `spark`, `lines` |
+| `CLAUDEMETER_SEGMENTS` | `model,daily,weekly,dir,branch` | Comma-separated, in display order. Also available: `today`, `ctx`, `cost`, `pace`, `spark`, `lines` |
 | `CLAUDEMETER_STYLE` | `chill` | `chill` → `⚡ Daily: ████▋░ 78% 1h54m`; `pill` → colour capsules; `compact` → `5h ████▋░ 78% resets in 1h 54m`; `words` → `daily usage ████▋░ 78%, resets in 1h 54m` |
 | `CLAUDEMETER_ICONS` | `emoji` | `emoji` → ✨⚡📅📁🌿; `shapes` → ✦◔▦▸⌥ for fonts with no emoji coverage; `ascii` → `* > @`; `none` |
 | `CLAUDEMETER_BAR_STYLE` | `smooth` | Meter glyphs: `smooth` (partial blocks), `blocks`, `shade`, `dots`, `line`, `bars`, `ascii` |
 | `CLAUDEMETER_SEPARATOR` | ` │ ` (` ` in pill, ` and ` in words, ` · ` in compact) | Text between segments |
 | `CLAUDEMETER_RESETS` | `relative` | `relative` → `1h54m`; `clock` → `7:31pm` (gaining a weekday when it lands on a later day); `0` → omit it |
 | `CLAUDEMETER_BARS` | `1` | `0` drops the meter before each percentage |
+| `CLAUDEMETER_PACE` | `1` | `0` removes the pace tick from the meters, the `pace` segment and the budget chart |
 | `CLAUDEMETER_BAR_WIDTH` | `6` (`8` in pill) | Characters per meter (1–30) |
 | `CLAUDEMETER_COLOR` | `1` | `0` disables colour; `NO_COLOR` is honoured too |
 | `CLAUDEMETER_COLOR_DEPTH` | auto | Force `24`, `8`, `4` or `0` if the terminal is detected wrong |
-| `CLAUDEMETER_REPORT_WIDTH` | `72` | Columns for the `/claudemeter:usage` dashboard (48–140) |
+| `CLAUDEMETER_REPORT_WIDTH` | `72` | Columns for the `/claudemeter:usage` dashboard (64–140) |
 | `CLAUDEMETER_NO_AUTO` | unset | `1` stops the SessionStart hook from touching your settings |
 
 Colour depth is detected from `COLORTERM` and `TERM`: truecolour terminals get
@@ -153,11 +173,43 @@ from zero on the first day.
 
 The same samples are kept as a small ring buffer in
 `~/.claude/claudemeter/history.json`, which is what the `spark` segment and the
-dashboard's **weekly trend** draw. The burn-rate projection there is a straight
-line through that window — usage is bursty, so read it as "if this hour repeats",
-not as a forecast. It is measured only within the current window: a reset shows
-up as the weekly figure dropping, and the trend restarts from there rather than
-reading the drop as usage being handed back.
+dashboard's **weekly trend** draw. They are read only within the current window:
+a reset shows up as the weekly figure dropping, and the trend restarts from there
+rather than reading the drop as usage being handed back.
+
+`pace` is the same idea as the tick, as a number: `1.0×` is exactly on budget,
+`2.0×` means the cap arrives at half-time. It tracks the weekly window, not the
+5-hour one — the 5-hour window is bursty by design, and spending it fast is what
+it is for.
+
+## The budget chart
+
+`/claudemeter:usage` draws where the week is heading rather than asserting it:
+
+```
+WEEKLY BUDGET ────────────────────────────────────────────────────────
+  100 ┤                           ▄▄▄▀▀                        ▄▄▄▄▄▄▀▀▀
+      │                     ▄▄▄▀▀▀                 ▄▄▄▄▄▄▀▀▀▀▀▀
+      │                ▄▄▄▀▀           ▄▄▄▄▄▄▀▀▀▀▀▀
+   50 │           ▄▄█▀▀     ▄▄▄▄▄▄▀▀▀▀▀
+      │         ▄▄▄▄▄▄▀▀▀▀▀▀
+      │▄▄▄▀▀▀▀▀▀
+    0 └─────────────┴───────────────────────────────────────────────────
+                  now                                 resets Sun 8:29am
+
+  2.05× even burn  ·  caps Wed 5:39pm, 3d 15h early
+```
+
+Three overlaid series: the dim **even-burn diagonal** a perfect spender would
+follow to the top-right corner, the **samples** actually collected, and a
+**projection** forward from the last one at the measured burn rate. Whether that
+ray meets the top of the chart before it reaches the right edge is the answer to
+"will I run out this week" — and unlike a percentage, it shows you by how much.
+
+The projection is a straight line through two endpoints. Usage is bursty, so read
+it as "if this rate holds", not as a forecast. The chart tells its three series
+apart by colour alone, so with colour off the verdict line is printed on its own
+rather than over a staircase that cannot be read.
 
 ## Troubleshooting
 
