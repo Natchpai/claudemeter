@@ -127,7 +127,7 @@ function renderSegment(name, p, ledger, history) {
     case "cost":
       return renderCost(name, p.cost);
     case "model":
-      return renderPlain("model", p.model?.display_name);
+      return renderPlain("model", p.model?.display_name && [p.model.display_name, p.effort?.level].filter(Boolean).join(" · "));
     case "dir":
       return renderPlain("dir", basename(p.workspace?.current_dir));
     case "branch":
