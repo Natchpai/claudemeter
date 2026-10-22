@@ -54,6 +54,7 @@ const resetMode = resolveResetMode(env.CLAUDEMETER_RESETS);
 const showPace = !isOff(env.CLAUDEMETER_PACE);
 const barWidth = clampInt(env.CLAUDEMETER_BAR_WIDTH, style === "pill" ? 8 : 6, 1, 30);
 const separator = env.CLAUDEMETER_SEPARATOR ?? defaultSeparator();
+const showEffort = !isOff(env.CLAUDEMETER_EFFORT);
 // The theme preview renders the real status line once per theme, in-process, to
 // guarantee what it shows is what you will get. It must not leave nine samples
 // and a rewritten snapshot behind for doing so.
@@ -127,7 +128,7 @@ function renderSegment(name, p, ledger, history) {
     case "cost":
       return renderCost(name, p.cost);
     case "model":
-      return renderPlain("model", p.model?.display_name, effortTag(p.effort?.level));
+      return renderPlain("model", p.model?.display_name, showEffort ? effortTag(p.effort?.level) : "");
     case "dir":
       return renderPlain("dir", basename(p.workspace?.current_dir));
     case "branch":
