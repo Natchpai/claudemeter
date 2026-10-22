@@ -2,7 +2,7 @@
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "claudemeter",
   "description": "Puts your Claude plan usage on the status line: model, both usage windows with gradient meters and a pace tick, project and branch \u2014 plus a usage dashboard with a budget projection chart.",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "author": {
     "name": "Ariful",
     "url": "https://github.com/arifbsmrstu"
